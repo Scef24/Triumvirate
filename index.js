@@ -4,9 +4,10 @@ const express = require('express')
 const jwt = require('jsonwebtoken');
 const port = 3000
 const app = express()
+const cors = require('cors')
 
 app.use(express.json())
-
+app.use(cors())
 const saltrounds = 10;
 
 app.listen(port,()=>{
