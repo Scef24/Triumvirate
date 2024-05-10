@@ -9,8 +9,8 @@ export default {
       ws: null,
       messages: [],
       newMessage: '',
-      searchQuery: '',  // For storing the search input
-    searchResults: [],  // For storing search results
+      searchQuery: '',  
+    searchResults: [],  
     searchType: 'track',
     featuredPlaylists: [],
     };
@@ -42,7 +42,30 @@ export default {
                 text:newMessage.message
             })
         }
-    },async fetchMessages() {
+    }, async logout() {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        const response = await fetch('http://localhost:3000/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to log out');
+        }
+
+        localStorage.removeItem('authToken');
+        this.userEmail = '';
+        this.$router.push('/');
+      }
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  },async fetchMessages() {
         const response = await(fetch('http://localhost:3001/api/messages'))
         const data = await response.json()
          this.messages = data;
@@ -70,10 +93,11 @@ export default {
             if (data.message === 'Message saved') {
                 this.messages.push({
                     email: this.userEmail,
-                    text: this.newMessage
+                    text: this.newMessage,
+                     song: message.song
                 });
                 
-                this.newMessage = ''; // Clear input field
+                this.newMessage = ''; 
             } else {
                 console.error('Unexpected response from server:', data);
             }
@@ -94,7 +118,7 @@ export default {
       });
       const data = await response.json();
       if (response.ok) {
-        this.searchResults = data[this.searchType + 's'].items;  // Parsing depends on the type
+        this.searchResults = data[this.searchType + 's'].items;  
       } else {
         throw new Error('Failed to fetch search results');
       }
@@ -109,125 +133,114 @@ export default {
       throw new Error(`Failed to fetch featured playlists: ${response.statusText}`);
     }
     const data = await response.json();
-    this.featuredPlaylists = data.playlists.items;
+    this.featuredPlaylists = data.playlists.items.slice(0,3);
   } catch (error) {
     console.error(error);
     this.featuredPlaylists = [];
   }
-},
-}}
+},shareSong(song) {
+    const message = {
+      email: this.userEmail,
+      text: `Shared song: ${song.name} by ${song.artists[0].name}`,
+      song: song
+    };
+    this.sendMessage(message);
+  }
+}
+}
 </script>
 
 <template>
-    <div>
-      <h1>Hello, Welcome to Dashboard</h1>
-      <p>Email: {{ userEmail }}</p>
-        
-      <ul class="featured-playlists">
-  <li v-for="(playlist, index) in featuredPlaylists" :key="index">
-    <strong>{{ playlist.name }}</strong> by {{ playlist.owner.display_name }}
-    <!-- Embed Spotify player if the playlist has a Spotify URI -->
-    <div v-if="playlist.external_urls.spotify">
-      <iframe
-        :src="`https://open.spotify.com/embed/playlist/${playlist.id}?utm_source=generator`"
-        style="border-radius:12px"
-        width="100%"
-        height="80"
-        frameborder="0"
-        allowfullscreen
-        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        loading="lazy">
-      </iframe>
-    </div>
-  </li>
-</ul>
-      <div>
-        <input v-model="searchQuery" @keyup.enter="searchSpotify" placeholder="Search Spotify..." />
-        <select v-model="searchType">
-          <option value="track">Tracks</option>
-          <option value="playlist">Playlists</option>
-          <option value="album">Albums</option>
-          <option value="artist">Artists</option>
-        </select>
-        <button @click="searchSpotify">Search</button>
-        <ul class="search-results">
-          <li v-for="(item, index) in searchResults" :key="index">
-            {{ item.name }} by {{ item.artists[0].name }}
-            <!-- Embed Spotify player if the search type is 'track' and the item has a Spotify URI -->
-            <div v-if="searchType === 'track' && item.external_urls.spotify">
-              <iframe
-                :src="`https://open.spotify.com/embed/track/${item.id}?utm_source=generator`"
-                style="border-radius:12px"
-                width="100%"
-                height="80"
-                frameborder="0"
-                allowfullscreen
-                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                loading="lazy">
-              </iframe>
-            </div>
-          </li>
-        </ul>
+  <div class="container-fluid">
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+      <div class="container-fluid">
+        <span class="navbar-brand mb-0 h1">Dashboard</span>
+        <span class="navbar-text">
+          Logged in as: {{ userEmail }}
+          <button class="btn btn-danger" @click="logout">Logout</button>
+        </span>
       </div>
-    
-      <!-- Chat container -->
-      <div class="chat-container">
-        <ul class="messages">
-          <li v-for="(message, index) in messages" :key="index">
-            <strong>{{ message.email }}:</strong> {{ message.text }}
-          </li>
-        </ul>
-        <input v-model="newMessage" @keyup.enter="sendMessage" placeholder="Type a message..." />
-        <button @click="sendMessage">Send</button>
+    </nav>
+
+    <div class="row mt-3">
+      <div class="col-md-4">
+  <div class="chat-container card">
+    <ul class="list-group list-group-flush chat-messages">
+      <li class="list-group-item" v-for="(message, index) in messages" :key="index">
+        <strong>{{ message.email }}:</strong> {{ message.text }}
+      </li>
+    </ul>
+    <div class="card-footer">
+      <input class="form-control" v-model="newMessage" @keyup.enter="sendMessage" placeholder="Type a message...">
+      <button class="btn btn-primary mt-2" @click="sendMessage">Send</button>
+    </div>
+  </div>
+</div>
+
+
+      <div class="col-md-8">
+        <h1>Welcome to Talk my Favorite</h1>
+        <div class="search-section mt-4">
+          <input class="form-control" v-model="searchQuery" @keyup.enter="searchSpotify" placeholder="Search Spotify...">
+          <select class="form-select mt-2" v-model="searchType">
+            <option value="track">Tracks</option>
+            <option value="playlist">Playlists</option>
+            <option value="album">Albums</option>
+            <option value="artist">Artists</option>
+          </select>
+          <button class="btn btn-success mt-2" @click="searchSpotify">Search</button>
+          <ul class="list-group mt-2">
+            <li class="list-group-item" v-for="(item, index) in searchResults" :key="index">
+              {{ item.name }} by {{ item.artists[0].name }}
+              <div v-if="searchType === 'track' && item.external_urls.spotify">
+                <iframe :src="`https://open.spotify.com/embed/track/${item.id}?utm_source=generator`" style="border-radius:12px" width="100%" height="80" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+              </div>
+              <button class="btn btn-outline-primary mt-2" @click="shareSong(item)">Share Song</button>
+            </li>
+          </ul>
+        </div>
+        <div class="featured-playlists">
+        <div class="card playlist-card" v-for="(playlist, index) in featuredPlaylists" :key="index">
+       <div class="card-body">
+      <div v-if="playlist.external_urls.spotify">
+        <iframe :src="`https://open.spotify.com/embed/playlist/${playlist.id}?utm_source=generator`" style="border-radius:12px; width:100%; height:250px;" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
       </div>
     </div>
-  </template>
-  
+  </div>
+</div>
 
 
+   
 
-<style>
+      </div>
+    </div>
+  </div>
+</template>
+
+ <style>
 .chat-container {
-    margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 500px; 
 }
 
-.messages {
-    list-style: none;
-    padding: 0;
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-.messages li {
-    margin-bottom: 10px;
-}
-
-input {
-    width: calc(100% - 90px);
-    padding: 8px;
-}
-
-button {
-    width: 80px;
-    height: 34px;
-    margin-left: 10px;
-}
-.search-results {
-  list-style: none;
-  max-height: 200px;
+.chat-messages {
   overflow-y: auto;
+  flex-grow: 1;
 }
-.featured-playlists {
-  margin-top: 20px;
-}
-
-.featured-playlists li {
-  margin-bottom: 10px;
+.featured-playlists .playlist-card {
+  width: 100%; 
+  margin-bottom: 2px; 
 }
 
-.featured-playlists iframe {
-  max-width: 100%;
-  border: none;
+/* .playlist-card .card-body {
+  padding: 10px; 
+} */
+
+iframe {
   border-radius: 12px;
+  width: 100%; /* Ensures the iframe takes the full width of the card */
+  height: 250px; /* Adjust height to make it square-ish */
 }
+
 </style>
