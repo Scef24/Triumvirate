@@ -2,9 +2,11 @@ const mysql = require('mysql2')
 const bcrypt = require('bcrypt')
 const express = require('express')
 const jwt = require('jsonwebtoken');
+const router = express.Router();
 const port = 3000
 const app = express()
 const cors = require('cors')
+
 
 app.use(express.json())
 app.use(cors())
@@ -83,3 +85,4 @@ app.post('/login',(req,res)=>{
         res.json({token})
     })
 })
+
