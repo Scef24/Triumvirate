@@ -86,3 +86,20 @@ app.post('/login',(req,res)=>{
     })
 })
 
+app.post('/logout', (req, res) => {
+    const token = req.body.token;
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+  
+    try {
+      const decoded = jwt.verify(token, 'secret_key');
+      const userId = decoded.userId;
+  
+      const expiredToken = jwt.sign({ userId }, 'secret_key', { expiresIn: '1s' });
+  
+      res.json({ message: 'Logged out successfully', expiredToken });
+    } catch (error) {
+      res.status(400).json({ error: 'Invalid token' });
+    }
+  });

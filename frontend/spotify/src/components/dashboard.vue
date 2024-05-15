@@ -1,5 +1,6 @@
 <script>
-import { jwtDecode } from "jwt-decode"; // Correct import for default export
+import {jwtDecode} from "jwt-decode";
+import io from 'socket.io-client';
 
 export default {
   name: 'Dashboard',
@@ -9,10 +10,11 @@ export default {
       ws: null,
       messages: [],
       newMessage: '',
-      searchQuery: '',  
-    searchResults: [],  
-    searchType: 'track',
-    featuredPlaylists: [],
+      searchQuery: '',
+      searchResults: [],
+      searchType: 'track',
+      featuredPlaylists: [],
+      socket: null,
     };
   },
   mounted() {
@@ -21,133 +23,143 @@ export default {
       try {
         const decoded = jwtDecode(token);
         this.userEmail = decoded.email;
-        this.setUpWebSocket()
+        this.setUpWebSocket();
       } catch (error) {
         console.error('Error Decoding Token:', error);
       }
     } else {
       console.error('No token found in localStorage');
     }
-  },created(){
+  },
+  created() {
     this.fetchFeaturedPlaylists();
-    this.fetchMessages()
+    this.fetchMessages();
+  },
+  beforeDestroy() {
+    if (this.socket) {
+      this.socket.disconnect();
+    }
   },
   methods: {
     setUpWebSocket() {
-        this.ws = new WebSocket('ws://localhost:3001');
-        this.ws.onmessage =(event)=> {
-            const newMessage = JSON.parse(event.data)
-            this.messages.push({
-                email:newMessage.email,
-                text:newMessage.message
-            })
+      this.socket = io('http://localhost:3001');
+      this.socket.on('message', (message) => {
+        const newMessage = JSON.parse(message);
+        this.messages.push({
+          email: newMessage.email,
+          text: newMessage.message,
+        });
+      });
+    },
+    async logout() {
+      try {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+          const response = await fetch('http://localhost:3000/logout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to log out');
+          }
+
+          localStorage.removeItem('authToken');
+          this.userEmail = '';
+          this.$router.push('/');
         }
-    }, async logout() {
-    try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        const response = await fetch('http://localhost:3000/logout', {
+      } catch (error) {
+        console.error('Error logging out:', error);
+      }
+    },
+    async fetchMessages() {
+      try {
+        const response = await fetch('http://localhost:3001/api/getmessages');
+        const data = await response.json();
+        this.messages = data;
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+      }
+    },
+    sendMessage() {
+      console.log('Function is Triggered');
+      if (this.newMessage.trim()) {
+        fetch('http://localhost:3001/api/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('authToken')}`,
           },
-          body: JSON.stringify({ token }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to log out');
-        }
-
-        localStorage.removeItem('authToken');
-        this.userEmail = '';
-        this.$router.push('/');
-      }
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
-  },async fetchMessages() {
-        const response = await(fetch('http://localhost:3001/api/messages'))
-        const data = await response.json()
-         this.messages = data;
-    },sendMessage() {
-    console.log('Function is Triggered');
-    if(this.newMessage.trim()) {
-        fetch('http://localhost:3001/api/messages',{
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${localStorage.getItem('authToken')}`
-            },
-            body: JSON.stringify({
-                email: this.userEmail,
-                message: this.newMessage
-            })
+          body: JSON.stringify({
+            email: this.userEmail,
+            message: this.newMessage,
+          }),
         })
-        .then(response => {
+          .then((response) => {
             if (!response.ok) {
-                throw new Error('Server response indicates failure to save the message');
+              throw new Error('Server response indicates failure to save the message');
             }
             return response.json();
-        })
-        .then(data => {
+          })
+          .then((data) => {
             if (data.message === 'Message saved') {
-                this.messages.push({
-                    email: this.userEmail,
-                    text: this.newMessage,
-                     song: message.song
-                });
-                
-                this.newMessage = ''; 
+              this.newMessage = '';
             } else {
-                console.error('Unexpected response from server:', data);
+              console.error('Unexpected response from server:', data);
             }
-        })
-        .catch(error => {
+          })
+          .catch((error) => {
             console.error('Error sending a message:', error);
-        });
-    }
-}, async searchSpotify() {
-    if (!this.searchQuery.trim()) return;
-
-    const url = `http://localhost:3002/search?query=${encodeURIComponent(this.searchQuery)}&type=${this.searchType}`;
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        }
-      });
-      const data = await response.json();
-      if (response.ok) {
-        this.searchResults = data[this.searchType + 's'].items;  
-      } else {
-        throw new Error('Failed to fetch search results');
+          });
       }
-    } catch (error) {
-      console.error('Error fetching Spotify data:', error);
-      this.searchResults = [];
-    }
-  },async fetchFeaturedPlaylists() {
-  try {
-    const response = await fetch('http://localhost:3002/featuredPlaylists');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch featured playlists: ${response.statusText}`);
-    }
-    const data = await response.json();
-    this.featuredPlaylists = data.playlists.items.slice(0,3);
-  } catch (error) {
-    console.error(error);
-    this.featuredPlaylists = [];
-  }
-},shareSong(song) {
-    const message = {
-      email: this.userEmail,
-      text: `Shared song: ${song.name} by ${song.artists[0].name}`,
-      song: song
-    };
-    this.sendMessage(message);
-  }
-}
-}
+    },
+    async searchSpotify() {
+      if (!this.searchQuery.trim()) return;
+
+      const url = `http://localhost:3002/search?query=${encodeURIComponent(this.searchQuery)}&type=${this.searchType}`;
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('authToken')}`,
+          },
+        });
+        const data = await response.json();
+        if (response.ok) {
+          this.searchResults = data[this.searchType + 's'].items;
+        } else {
+          throw new Error('Failed to fetch search results');
+        }
+      } catch (error) {
+        console.error('Error fetching Spotify data:', error);
+        this.searchResults = [];
+      }
+    },
+    async fetchFeaturedPlaylists() {
+      try {
+        const response = await fetch('http://localhost:3002/featuredPlaylists');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch featured playlists: ${response.statusText}`);
+        }
+        const data = await response.json();
+        this.featuredPlaylists = data.playlists.items.slice(0, 3);
+      } catch (error) {
+        console.error(error);
+        this.featuredPlaylists = [];
+      }
+    },
+    shareSong(song) {
+      const message = {
+        email: this.userEmail,
+        text: `Shared song: ${song.name} by ${song.artists[0].name}`,
+        song: song,
+      };
+      this.sendMessage(message);
+    },
+  },
+};
 </script>
 
 <template>
@@ -164,24 +176,33 @@ export default {
 
     <div class="row mt-3">
       <div class="col-md-4">
-  <div class="chat-container card">
-    <ul class="list-group list-group-flush chat-messages">
-      <li class="list-group-item" v-for="(message, index) in messages" :key="index">
-        <strong>{{ message.email }}:</strong> {{ message.text }}
-      </li>
-    </ul>
-    <div class="card-footer">
-      <input class="form-control" v-model="newMessage" @keyup.enter="sendMessage" placeholder="Type a message...">
-      <button class="btn btn-primary mt-2" @click="sendMessage">Send</button>
-    </div>
-  </div>
-</div>
-
+        <div class="chat-container card">
+          <ul class="list-group list-group-flush chat-messages">
+            <li class="list-group-item" v-for="(message, index) in messages" :key="index">
+              <strong>{{ message.email }}:</strong> {{ message.text }}
+            </li>
+          </ul>
+          <div class="card-footer">
+            <input
+              class="form-control"
+              v-model="newMessage"
+              @keyup.enter="sendMessage"
+              placeholder="Type a message..."
+            />
+            <button class="btn btn-primary mt-2" @click="sendMessage">Send</button>
+          </div>
+        </div>
+      </div>
 
       <div class="col-md-8">
         <h1>Welcome to Talk my Favorite</h1>
         <div class="search-section mt-4">
-          <input class="form-control" v-model="searchQuery" @keyup.enter="searchSpotify" placeholder="Search Spotify...">
+          <input
+            class="form-control"
+            v-model="searchQuery"
+            @keyup.enter="searchSpotify"
+            placeholder="Search Spotify..."
+          />
           <select class="form-select mt-2" v-model="searchType">
             <option value="track">Tracks</option>
             <option value="playlist">Playlists</option>
@@ -193,29 +214,42 @@ export default {
             <li class="list-group-item" v-for="(item, index) in searchResults" :key="index">
               {{ item.name }} by {{ item.artists[0].name }}
               <div v-if="searchType === 'track' && item.external_urls.spotify">
-                <iframe :src="`https://open.spotify.com/embed/track/${item.id}?utm_source=generator`" style="border-radius:12px" width="100%" height="80" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+                <iframe
+                  :src="`https://open.spotify.com/embed/track/${item.id}?utm_source=generator`"
+                  style="border-radius:12px"
+                  width="100%"
+                  height="80"
+                  frameborder="0"
+                  allowfullscreen
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                ></iframe>
               </div>
               <button class="btn btn-outline-primary mt-2" @click="shareSong(item)">Share Song</button>
             </li>
           </ul>
         </div>
         <div class="featured-playlists">
-        <div class="card playlist-card" v-for="(playlist, index) in featuredPlaylists" :key="index">
-       <div class="card-body">
-      <div v-if="playlist.external_urls.spotify">
-        <iframe :src="`https://open.spotify.com/embed/playlist/${playlist.id}?utm_source=generator`" style="border-radius:12px; width:100%; height:250px;" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-   
-
+          <div class="card playlist-card" v-for="(playlist, index) in featuredPlaylists" :key="index">
+            <div class="card-body">
+              <div v-if="playlist.external_urls.spotify">
+                <iframe
+                  :src="`https://open.spotify.com/embed/playlist/${playlist.id}?utm_source=generator`"
+                  style="border-radius:12px; width:100%; height:250px;"
+                  frameborder="0"
+                  allowfullscreen
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                ></iframe>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
 
  <style>
 .chat-container {
