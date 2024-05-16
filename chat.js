@@ -21,9 +21,10 @@ function checkDatabaseConnection() {
     });
 }
 
-function saveMessage(email, message, callback) {
-    const sql = 'INSERT INTO messages (email, text) VALUES (?, ?)';
-    connection.query(sql, [email, message], (error, result) => {
+function saveMessage(email, text, song, callback) {
+    const sql = 'INSERT INTO messages (email, text, song_id, song_name, song_artists) VALUES (?, ?, ?, ?, ?)';
+    const songArtists = song ? JSON.stringify(song.artists.map(artist => artist.name)) : null;
+    connection.query(sql, [email, text, song?.id, song?.name, songArtists], (error, result) => {
         if (error) {
             console.error('Failed to insert message:', error);
             callback(error, null);
@@ -48,10 +49,10 @@ const io = socketIo(server, {
 });
 
 app.post('/api/messages', (req, res) => {
-    const { email, message } = req.body;
-    console.log('Received message:', email, message); // Debugging line
+    const { email, text, song } = req.body;
+    console.log('Received message:', email, text, song); // Debugging line
 
-    saveMessage(email, message, (error, result) => {
+    saveMessage(email, text, song, (error, result) => {
         if (error) {
             console.error('Failed to insert message:', error);
             return res.status(500).json({ message: 'Failed to save message' });
@@ -59,8 +60,8 @@ app.post('/api/messages', (req, res) => {
         console.log('Message saved:', result.insertId);
         res.json({ message: 'Message saved', messageId: result.insertId });
 
-        // Emit the new message event to all connected clients
-        io.emit('message', JSON.stringify({ email, message }));
+        
+        io.emit('message', JSON.stringify({ email, text, song }));
     });
 });
 
@@ -71,7 +72,14 @@ app.get('/api/getmessages', (req, res) => {
             console.error('Failed to retrieve messages:', error);
             return res.status(500).send('Failed to retrieve messages');
         }
-        res.json(results);
+        res.json(results.map(result => ({
+            ...result,
+            song: result.song_id ? {
+                id: result.song_id,
+                name: result.song_name,
+                artists: JSON.parse(result.song_artists).map(name => ({ name })),
+            } : null
+        })));
     });
 });
 

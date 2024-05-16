@@ -47,7 +47,11 @@ export default {
       </div>
       <button type="submit" class="btn btn-primary">Login</button>
     </form>
+     <p class="mt-3">
+      Don't have an account? <router-link to="/register">Register here</router-link>.
+    </p>
   </div>
+  
 </template>
 
 
